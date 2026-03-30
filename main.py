@@ -3,8 +3,12 @@
 DSA Vault — Competition Template Search + Advisor
 Run: python main.py
 """
+import json
 import re
 import subprocess
+import urllib.request
+import urllib.error
+from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import (
     Input, ListView, ListItem, Static, Label,
@@ -12,10 +16,13 @@ from textual.widgets import (
 )
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.binding import Binding
-from textual import on
+from textual import on, work
 from textual.reactive import reactive
 
 from engine import SearchEngine
+
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "llama3"
 
 
 CATEGORY_ICONS = {
@@ -234,6 +241,17 @@ ListView > ListItem.--highlight {
     color: #e6edf3;
 }
 
+/* ── Coach log tab ── */
+#coach-log-scroll {
+    height: 1fr;
+    background: #0d1117;
+}
+
+#coach-log {
+    padding: 1 2;
+    color: #8b949e;
+}
+
 /* ── Status bar ── */
 #status {
     height: 1;
@@ -253,6 +271,8 @@ class DSAVault(App):
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit"),
         Binding("ctrl+y", "copy_code", "Copy Code", show=True),
+        Binding("ctrl+g", "generate_solution", "Generate", show=True),
+        Binding("ctrl+l", "show_log", "Log", show=False),
         Binding("ctrl+r", "reload", "Reload", show=False),
         Binding("j", "next_result", "↓", show=False),
         Binding("k", "prev_result", "↑", show=False),
@@ -267,6 +287,7 @@ class DSAVault(App):
         super().__init__()
         self.engine = SearchEngine()
         self._results: list[dict] = []
+        self._coach_log: list[str] = []
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
@@ -291,7 +312,7 @@ class DSAVault(App):
                             yield Static("", id="preview-content", markup=False)
 
             # ── Tab 2: Advisor ─────────────────────────────────────────────
-            with TabPane("Advisor  AI", id="advisor"):
+            with TabPane("Advisor  ·", id="advisor"):
                 with Vertical(id="advisor-main"):
                     with Vertical(id="problem-panel"):
                         yield Label(
@@ -315,8 +336,17 @@ class DSAVault(App):
                                 markup=False,
                             )
 
+            # ── Tab 3: Coach log (hidden until ctrl+l) ─────────────────────
+            with TabPane("·", id="coach-log-tab"):
+                with ScrollableContainer(id="coach-log-scroll"):
+                    yield Static(
+                        "No generation runs yet. Ctrl+G from the search bar to start.",
+                        id="coach-log",
+                        markup=False,
+                    )
+
         yield Static(
-            " ctrl+y:Copy  ctrl+enter:Analyze  j/k:Navigate  ctrl+r:Reload  ctrl+q:Quit",
+            " ctrl+y:Copy  ctrl+g:Generate  ctrl+enter:Analyze  j/k:Navigate  ctrl+r:Reload  ctrl+q:Quit",
             id="status",
             markup=False,
         )
@@ -463,6 +493,110 @@ class DSAVault(App):
 
     def _set_analysis(self, text: str) -> None:
         self.query_one("#analysis-content", Static).update(text)
+
+    # ── Coach ─────────────────────────────────────────────────────────────
+
+    def action_generate_solution(self) -> None:
+        problem = self.query_one("#search-input", Input).value.strip()
+        if not problem:
+            self._set_status("Type a problem/topic in the search bar first, then Ctrl+G")
+            self.set_timer(3, self._reset_status)
+            return
+        self._append_log(f"─── New generation ───────────────────────────────")
+        self._append_log(f"Input: {problem}")
+        self._set_status("Coach: calling ollama...")
+        self._run_coach(problem)
+
+    def action_show_log(self) -> None:
+        tc = self.query_one(TabbedContent)
+        tc.active = "coach-log-tab"
+
+    @work(thread=True)
+    def _run_coach(self, problem: str) -> None:
+        prompt = (
+            "You are an expert competitive programmer. "
+            "Generate a complete, contest-ready Python implementation for the following problem or algorithm topic.\n\n"
+            f"Topic: {problem}\n\n"
+            "Output ONLY a single Python file with this exact structure — no explanation, no markdown fences:\n\n"
+            '"""\n'
+            "NAME: <concise algorithm name>\n"
+            "TAGS: <comma-separated lowercase tags, e.g. graph, bfs, shortest-path>\n"
+            "DESCRIPTION: <one sentence: when and why to use this>\n"
+            "COMPLEXITY: Time: O(...), Space: O(...)\n"
+            'CODE:\n"""\n\n'
+            "# full Python implementation here, with comments\n\n"
+            "Rules:\n"
+            "- The triple-quoted docstring must be at the very top.\n"
+            "- CODE: must be the last field before the closing triple-quote.\n"
+            "- After the closing triple-quote write the real implementation.\n"
+            "- Include at least one complete, runnable example in comments."
+        )
+
+        payload = json.dumps({
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+        }).encode()
+
+        try:
+            self.app.call_from_thread(self._append_log, f"POST {OLLAMA_URL} (model={OLLAMA_MODEL})")
+            req = urllib.request.Request(
+                OLLAMA_URL,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                result = json.loads(resp.read())
+            code = result.get("response", "").strip()
+        except urllib.error.URLError as e:
+            self.app.call_from_thread(self._append_log, f"ERROR: Cannot reach ollama — {e.reason}")
+            self.app.call_from_thread(self._set_status, "Coach: ollama unreachable — check log (ctrl+l)")
+            return
+        except Exception as e:
+            self.app.call_from_thread(self._append_log, f"ERROR: {e}")
+            self.app.call_from_thread(self._set_status, "Coach: failed — check log (ctrl+l)")
+            return
+
+        if not code:
+            self.app.call_from_thread(self._append_log, "ERROR: Empty response from ollama")
+            self.app.call_from_thread(self._set_status, "Coach: empty response")
+            return
+
+        self.app.call_from_thread(self._append_log, f"Response received ({len(code)} chars)")
+
+        # Strip accidental markdown fences
+        code = re.sub(r"^```(?:python)?\s*", "", code)
+        code = re.sub(r"\s*```$", "", code)
+
+        gen_dir = Path("solutions/generated")
+        gen_dir.mkdir(parents=True, exist_ok=True)
+        slug = re.sub(r"[^a-z0-9]+", "_", problem.lower())[:40].strip("_")
+        filepath = gen_dir / f"{slug}.py"
+        filepath.write_text(code)
+
+        self.app.call_from_thread(self._append_log, f"Saved → solutions/generated/{slug}.py")
+        self.app.call_from_thread(self._finish_generation, slug)
+
+    def _finish_generation(self, slug: str) -> None:
+        self.engine.reload()
+        q = self.query_one("#search-input", Input).value.strip()
+        results = self.engine.search(q) if q else self.engine.get_all()
+        self._refresh_list(results)
+        count = len(self.engine.solutions)
+        self.sub_title = f"{count} templates"
+        self._append_log(f"Catalog reloaded — {count} templates total.")
+        self._set_status(f"Coach: '{slug}' added to catalog  (ctrl+l to view log)")
+        self.set_timer(4, self._reset_status)
+
+    def _append_log(self, msg: str) -> None:
+        self._coach_log.append(msg)
+        try:
+            log_widget = self.query_one("#coach-log", Static)
+            log_widget.update("\n".join(self._coach_log[-80:]))
+            scroll = self.query_one("#coach-log-scroll", ScrollableContainer)
+            scroll.scroll_end(animate=False)
+        except Exception:
+            pass
 
     # ── Copy ──────────────────────────────────────────────────────────────
 
