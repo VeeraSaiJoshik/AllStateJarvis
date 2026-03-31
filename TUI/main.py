@@ -22,7 +22,7 @@ from textual.reactive import reactive
 from engine import SearchEngine
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3"
+OLLAMA_MODEL = "qwen3"
 
 
 CATEGORY_ICONS = {
@@ -298,9 +298,11 @@ class DSAVault(App):
 
             # ── Tab 1: Search ──────────────────────────────────────────────
             with TabPane("Search  /", id="search"):
-                yield Input(
+                yield TextArea(
+                    "",
                     placeholder="  Search: DFS, binary search, knapsack, KMP, segment tree...",
                     id="search-input",
+                    soft_wrap=True,
                 )
                 with Horizontal(id="search-main"):
                     with Vertical(id="results-panel"):
@@ -373,9 +375,9 @@ class DSAVault(App):
             lv.index = 0
             self._show_preview(solutions[0])
 
-    @on(Input.Changed, "#search-input")
-    def on_search_changed(self, event: Input.Changed) -> None:
-        q = event.value.strip()
+    @on(TextArea.Changed, "#search-input")
+    def on_search_changed(self, event: TextArea.Changed) -> None:
+        q = self.query_one("#search-input", TextArea).text.strip()
         results = self.engine.search(q) if q else self.engine.get_all()
         self._refresh_list(results)
 
@@ -497,7 +499,7 @@ class DSAVault(App):
     # ── Coach ─────────────────────────────────────────────────────────────
 
     def action_generate_solution(self) -> None:
-        problem = self.query_one("#search-input", Input).value.strip()
+        problem = self.query_one("#search-input", TextArea).text.strip()
         if not problem:
             self._set_status("Type a problem/topic in the search bar first, then Ctrl+G")
             self.set_timer(3, self._reset_status)
@@ -628,7 +630,7 @@ class DSAVault(App):
 
     def action_reload(self) -> None:
         self.engine.reload()
-        q = self.query_one("#search-input", Input).value.strip()
+        q = self.query_one("#search-input", TextArea).text.strip()
         results = self.engine.search(q) if q else self.engine.get_all()
         self._refresh_list(results)
         count = len(self.engine.solutions)
