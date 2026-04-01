@@ -34,61 +34,14 @@ CATEGORY_ICONS = {
     "data_structures": "▣",
 }
 
-# Maps keyword patterns (regex) → (signal label, list of template name fragments to boost)
-SIGNALS: list[tuple[str, str, list[str]]] = [
-    # Graphs
-    (r"\bshortest path\b|\bmin(?:imum)? dist",       "Shortest path problem",          ["dijkstra", "bellman", "floyd", "bfs"]),
-    (r"\bnegative (?:weight|edge|cycle)",             "Negative weights detected",      ["bellman", "floyd"]),
-    (r"\ball.pairs",                                   "All-pairs shortest path",        ["floyd"]),
-    (r"\bminimum spanning tree\b|\bmst\b",            "MST problem",                    ["spanning tree"]),
-    (r"\bconnected component",                        "Connected components",            ["dfs", "bfs", "dsu"]),
-    (r"\bcycle\b",                                    "Cycle detection",                ["cycle", "dsu", "dfs"]),
-    (r"\btopolog",                                    "Topological ordering",           ["topological"]),
-    (r"\bstrongly connected\b|\bscc\b",               "Strongly connected components",  ["tarjan", "kosaraju", "scc"]),
-    (r"\bbipartite\b|\b2.colou?r",                    "Bipartite / 2-coloring",         ["bipartite"]),
-    (r"\bmax(?:imum)? flow\b|\bmin cut\b",            "Network flow",                   ["flow"]),
-    (r"\bgrid\b|\bmatrix\b.*\bpath\b|\bmaze\b",       "Grid traversal",                 ["grid", "bfs"]),
-    # Trees
-    (r"\brange (?:sum|min|max|query)\b",              "Range query",                    ["segment tree", "fenwick", "sparse"]),
-    (r"\brange update\b|\blazy",                      "Range update",                   ["lazy"]),
-    (r"\bprefix sum\b|\bpoint update",                "Prefix sum / point update",      ["fenwick", "bit"]),
-    (r"\blca\b|\blowest common ancestor",             "LCA query",                      ["lca"]),
-    (r"\bsubtree\b|\btree dp\b",                      "Tree DP",                        ["tree dp", "dp on tree"]),
-    (r"\btrie\b|\bprefix\b.*\bstring",                "Prefix / trie",                  ["trie"]),
-    (r"\bxor\b.*\bmax\b|\bmax\b.*\bxor",             "XOR maximization",               ["trie"]),
-    (r"\bunion.find\b|\bdisjoint\b|\bdsu\b",          "Union-Find / DSU",               ["dsu", "union"]),
-    # DP
-    (r"\bknapsack\b|\bweight\b.*\bvalue\b|\bpack",    "Knapsack-style DP",              ["knapsack"]),
-    (r"\blongest (?:common )?subsequence\b|\blcs\b",  "LCS",                            ["lcs"]),
-    (r"\blongest increasing\b|\blis\b",               "LIS",                            ["lis"]),
-    (r"\bedit distance\b|\blevenshtein",              "Edit distance",                  ["edit distance"]),
-    (r"\bcoin\b|\bchange\b.*\bmin",                   "Coin change",                    ["coin change"]),
-    (r"\bbitmask\b|\bsubset\b.*\bdp\b|\btsp\b",       "Bitmask DP",                     ["bitmask"]),
-    (r"\bdigit dp\b|\bcount.*\bdigit\b",              "Digit DP",                       ["digit dp"]),
-    (r"\binterval\b.*\bdp\b|\bburst\b|\bmerge.*stone","Interval DP",                    ["interval dp"]),
-    (r"\bexpect(?:ed)?\b.*\bvalue\b|\bprobabilit",    "Probability / expected value DP",["probability"]),
-    # Strings
-    (r"\bpattern match\b|\boccurrences? of\b",        "Pattern matching",               ["kmp", "z-algo", "rabin"]),
-    (r"\bmulti.pattern\b|\bmany patterns\b",          "Multi-pattern matching",         ["aho-corasick"]),
-    (r"\bpalindrome\b",                               "Palindrome",                     ["manacher", "palindrome"]),
-    (r"\bsuffix\b|\bsubstring.*distinct\b",           "Suffix structure",               ["suffix array"]),
-    (r"\brolling hash\b|\bstring hash",               "String hashing",                 ["hashing"]),
-    # Math
-    (r"\bprime\b|\bsieve\b|\bprimality",              "Prime numbers",                  ["sieve", "prime"]),
-    (r"\bmod(?:ular)?\b.*\binverse\b|\bmodulo\b",     "Modular arithmetic",             ["modular"]),
-    (r"\bcombination\b|\bbinomial\b|\bncr\b",         "Combinatorics",                  ["combinatorics"]),
-    (r"\bchinese remainder\b|\bcrt\b",                "CRT",                            ["chinese remainder"]),
-    (r"\bmatrix.*(?:power|exp)\b|\brecurrence",       "Matrix exponentiation",          ["matrix exp"]),
-    (r"\bfft\b|\bpolynomial\b|\bconvolution",         "FFT / polynomial",               ["fft"]),
-    (r"\bconvex hull\b|\bgeometr",                    "Geometry",                       ["geometry", "convex hull"]),
-    # Data structures
-    (r"\bnext greater\b|\bnext smaller\b|\bhistogram","Monotonic stack",                ["monotonic stack"]),
-    (r"\bsliding window\b|\bwindow.*max\b",           "Sliding window",                 ["sliding window", "monotonic deque"]),
-    (r"\bk.?th\b|\btop.k\b|\bmedian",                "Order statistics / heap",        ["heap", "ordered set"]),
-    (r"\binversion\b|\bcount.*smaller",               "Inversion count",                ["merge sort", "bit", "fenwick"]),
-    (r"\bbinary search.*answer\b|\bminimize.*max\b",  "Binary search on answer",        ["binary search"]),
-    (r"\bsqrt\b.*\bdecompos\b|\bmo.?s\b",            "Mo's / sqrt decomposition",      ["sqrt", "mo"]),
-]
+CATEGORY_NAMES = {
+    "graphs": "GRAPHS",
+    "trees": "TREES",
+    "dp": "DYNAMIC PROGRAMMING",
+    "strings": "STRINGS",
+    "math_nt": "MATH / NUMBER THEORY",
+    "data_structures": "DATA STRUCTURES",
+}
 
 CSS = """
 Screen {
@@ -429,48 +382,37 @@ class DSAVault(App):
 
     def _run_advisor(self, problem: str) -> None:
         self._set_status("Analyzing...")
-        problem_lower = problem.lower()
 
-        # ── Step 1: Keyword signal detection ──────────────────────────────
-        triggered: list[tuple[str, list[str]]] = []  # (label, boost_fragments)
-        for pattern, label, boosts in SIGNALS:
-            if re.search(pattern, problem_lower):
-                triggered.append((label, boosts))
+        # Use the new classify() method
+        result = self.engine.classify(problem, top_k=10)
 
-        # ── Step 2: BM25 retrieval + signal boosting ───────────────────────
-        retrieved = self.engine.search(problem, top_k=10)
+        # Extract results
+        primary_category = result["primary_category"]
+        confidence = result["confidence"]
+        detected_patterns = result["detected_patterns"]
+        reranked = result["ranked_solutions"]
 
-        # Build a boost score per solution based on triggered signals
-        boost_map: dict[str, float] = {}
-        for sol in retrieved:
-            name_lower = sol["name"].lower()
-            tags_lower = " ".join(sol["tags"]).lower()
-            text = name_lower + " " + tags_lower
-            extra = 0.0
-            for _, frags in triggered:
-                for frag in frags:
-                    if frag in text:
-                        extra += 6.0
-                        break
-            boost_map[sol["name"]] = extra
-
-        # Re-sort by original BM25 rank + boost
-        scored = sorted(
-            enumerate(retrieved),
-            key=lambda x: boost_map.get(x[1]["name"], 0) - x[0] * 0.5,
-            reverse=True,
-        )
-        reranked = [sol for _, sol in scored[:6]]
-
-        # ── Step 3: Build output ───────────────────────────────────────────
+        # Build output
         lines: list[str] = []
 
-        if triggered:
-            lines.append("DETECTED SIGNALS:")
-            for label, _ in triggered:
-                lines.append(f"  → {label}")
+        # Show primary category prominently
+        if primary_category != "unknown":
+            icon = CATEGORY_ICONS.get(primary_category, "•")
+            category_name = CATEGORY_NAMES.get(primary_category, primary_category.upper())
+            conf_bar = "█" * int(confidence / 10)
+            lines.append(f"PRIMARY CATEGORY: {icon} {category_name}")
+            lines.append(f"Confidence: {conf_bar} {confidence}%")
             lines.append("")
 
+        # Show detected signals
+        if detected_patterns:
+            lines.append("DETECTED PATTERNS:")
+            for label, pattern_conf in detected_patterns[:8]:  # Show top 8 patterns
+                conf_indicator = "●" if pattern_conf >= 75 else "◐" if pattern_conf >= 60 else "○"
+                lines.append(f"  {conf_indicator} {label}")
+            lines.append("")
+
+        # Show recommended templates with confidence indicators
         lines.append("RECOMMENDED TEMPLATES:")
         lines.append("")
         for i, sol in enumerate(reranked, 1):
@@ -484,14 +426,19 @@ class DSAVault(App):
                 lines.append(f"     Notes     : {desc}.")
             lines.append("")
 
-        if not triggered:
+        # Hint about template selection
+        if reranked:
+            lines.append("─" * 50)
+            lines.append("Tip: Switch to the Search tab to view full template code.")
+
+        if not detected_patterns:
             lines.append("─" * 50)
             lines.append("No strong keyword signals found.")
             lines.append("Results are ranked by BM25 text similarity only.")
             lines.append("Try pasting more of the problem statement.")
 
         self._set_analysis("\n".join(lines))
-        self._set_status("Done — select a template to view its code")
+        self._set_status("Done — switch to Search tab to view template code")
 
     def _set_analysis(self, text: str) -> None:
         self.query_one("#analysis-content", Static).update(text)
